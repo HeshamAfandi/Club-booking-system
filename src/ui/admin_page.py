@@ -38,7 +38,7 @@ QWidget {
     background: #0f1115;
     color: #E6EEF3;
     font-family: "Segoe UI", Roboto, Arial;
-    font-size: 12px;
+    font-size: 20px;
 }
 
 /* Buttons and left panel */
@@ -96,7 +96,6 @@ QHeaderView::section {
     border-right: 1px solid rgba(255,255,255,0.03);
 }
 .collectionButton {
-    font-size: 13px;
     padding: 12px;
     margin: 6px;
     border-radius: 6px;
@@ -150,7 +149,7 @@ class AdminPage(QtWidgets.QWidget):
         left_layout.setContentsMargins(8, 8, 8, 8)
         left_layout.addSpacing(8)
         header = QtWidgets.QLabel("Collections")
-        header.setStyleSheet("font-weight:800; font-size:14px; color:#dff0ff; padding-left:8px;")
+        header.setStyleSheet("font-weight:800; color:#dff0ff; padding-left:8px;")
         left_layout.addWidget(header)
         left_layout.addSpacing(6)
 
@@ -367,12 +366,33 @@ class AdminPage(QtWidgets.QWidget):
         self.count_label.setText(f"Filtered: {len(filtered)}")
 
     def _on_insert_clicked(self):
-        # small JSON dialog to insert — keep DB logic same as before
+        # New insert flow: show a form-based dialog built from existing docs,
+        # fallback to JSON editor if no schema can be inferred.
         if not self.current_collection:
             QtWidgets.QMessageBox.warning(self, "No Collection", "Select a collection first.")
             return
-        text, ok = QtWidgets.QInputDialog.getMultiLineText(self, "Insert Document (JSON)",
-                                                           f"Insert into {self.current_collection}", "{}")
+
+        # If we have cached docs, use them to infer fields
+        sample_docs = self.docs_cache if hasattr(self, "docs_cache") else []
+        if sample_docs:
+            # get union of keys across first N docs (excluding _id)
+            keys = []
+            for d in sample_docs[:10]:
+                for k in d.keys():
+                    if k == "_id":
+                        continue
+                    if k not in keys:
+                        keys.append(k)
+            if keys:
+                self._show_insert_dialog(self.current_collection, keys)
+                return
+
+        # fallback: if no docs or no fields found, open JSON editor (old behavior)
+        text, ok = QtWidgets.QInputDialog.getMultiLineText(
+            self, "Insert Document (JSON)",
+            f"No sample documents found in '{self.current_collection}'.\nInsert raw JSON for the new document:",
+            "{}"
+        )
         if not ok:
             return
         try:
@@ -386,6 +406,174 @@ class AdminPage(QtWidgets.QWidget):
             self._load_docs(self.current_collection)
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Insert failed", str(e))
+
+    def _show_insert_dialog(self, coll, fields):
+        """
+        Build and show a form dialog with input fields derived from `fields`.
+        - coll: collection name
+        - fields: list of field names (skips _id)
+        """
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowTitle(f"Insert into {coll}")
+        dialog.setModal(True)
+        dialog.resize(520, 40 + len(fields) * 40)
+
+        form = QtWidgets.QFormLayout()
+        widgets = {}
+
+        # Heuristic: if field name suggests long text, use QTextEdit
+        long_fields = {"notes", "message", "maintenanceNote", "description"}
+
+        for f in fields:
+            # Special: show dropdowns for referenced id fields
+            if coll == "members" and f == "membershipLevelId":
+                # membership level dropdown: label -> store actual _id as itemData
+                combo = QtWidgets.QComboBox()
+                combo.setEditable(False)
+                try:
+                    levels = list(self.db.find_docs("membershipLevels", limit=500))
+                    # add a placeholder
+                    combo.addItem("-- choose membership level --", None)
+                    for lvl in levels:
+                        label = str(lvl.get("name") or lvl.get("_id"))
+                        combo.addItem(label, lvl.get("_id"))
+                except Exception:
+                    combo.addItem("Error loading levels", None)
+                widgets[f] = combo
+                form.addRow(QtWidgets.QLabel(f), combo)
+                continue
+
+            # If inserting booking, show member and facility pickers
+            if coll == "bookings" and f in ("memberId", "facilityId"):
+                combo = QtWidgets.QComboBox()
+                combo.setEditable(False)
+                try:
+                    target = "members" if f == "memberId" else "facilities"
+                    docs = list(self.db.find_docs(target, limit=1000))
+                    combo.addItem(f"-- choose {target} --", None)
+                    for doc_item in docs:
+                        # display friendly label if available
+                        if target == "members":
+                            label = f"{doc_item.get('firstName','') } {doc_item.get('lastName','') }".strip()
+                        else:
+                            label = doc_item.get('name') or str(doc_item.get('_id'))
+                        if not label:
+                            label = str(doc_item.get('_id'))
+                        combo.addItem(label, doc_item.get("_id"))
+                except Exception:
+                    combo.addItem("Error loading items", None)
+                widgets[f] = combo
+                form.addRow(QtWidgets.QLabel(f), combo)
+                continue
+
+            # fallback heuristics (unchanged)
+            if f in long_fields or (f.endswith("s") and f not in ("status", "type")):
+                w = QtWidgets.QPlainTextEdit()
+                w.setFixedHeight(70)
+                w.setPlaceholderText("Enter value (plain text or JSON array/object)")
+            elif any(sub in f.lower() for sub in ("date", "time", "at", "start", "end")):
+                w = QtWidgets.QLineEdit()
+                w.setPlaceholderText("e.g. 2025-11-21T09:00:00 or 2025-11-21")
+            else:
+                w = QtWidgets.QLineEdit()
+            widgets[f] = w
+            form.addRow(QtWidgets.QLabel(f), w)
+
+
+        # Buttons
+        btn_box = QtWidgets.QHBoxLayout()
+        btn_box.addStretch()
+        ok_btn = QtWidgets.QPushButton("Insert")
+        cancel_btn = QtWidgets.QPushButton("Cancel")
+        btn_box.addWidget(cancel_btn)
+        btn_box.addWidget(ok_btn)
+
+        # Layout wrapper
+        vbox = QtWidgets.QVBoxLayout(dialog)
+        vbox.addLayout(form)
+        vbox.addLayout(btn_box)
+
+        # Handlers
+        def on_cancel():
+            dialog.reject()
+
+        def coerce_value(s):
+            # try to convert string s to int/float/bool/json if possible
+            if s is None:
+                return None
+            s = s.strip()
+            if s == "":
+                return ""  # keep empty string rather than None
+            # boolean
+            if s.lower() in ("true", "false"):
+                return s.lower() == "true"
+            # number
+            try:
+                if "." in s:
+                    fv = float(s)
+                    return fv
+                iv = int(s)
+                return iv
+            except Exception:
+                pass
+            # json object/array detection
+            if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
+                try:
+                    return json.loads(s)
+                except Exception:
+                    pass
+            # otherwise keep string
+            return s
+
+        def on_ok():
+            # create the document dictionary BEFORE filling it
+            doc = {}
+
+            # build doc from widgets
+            for k, w in widgets.items():
+
+                # --- ComboBox case (reference fields) ---
+                if isinstance(w, QtWidgets.QComboBox):
+                    data = w.currentData()
+                    doc[k] = data   # store referenced _id (or None)
+                    continue
+
+                # --- LineEdit case ---
+                if isinstance(w, QtWidgets.QLineEdit):
+                    raw = w.text()
+
+                # --- PlainTextEdit case ---
+                elif isinstance(w, QtWidgets.QPlainTextEdit):
+                    raw = w.toPlainText()
+
+                # fallback
+                else:
+                    try:
+                        raw = w.text()
+                    except:
+                        raw = ""
+
+                # convert text to proper type
+                val = coerce_value(raw)
+                doc[k] = val
+
+            # insert into DB
+            try:
+                res = self.db.insert_doc(coll, doc)
+                QtWidgets.QMessageBox.information(dialog, "Inserted", f"Inserted id: {res.inserted_id}")
+                dialog.accept()
+                # reload UI
+                self._load_docs(coll)
+            except Exception as e:
+                QtWidgets.QMessageBox.critical(dialog, "Insert failed", str(e))
+
+
+        cancel_btn.clicked.connect(on_cancel)
+        ok_btn.clicked.connect(on_ok)
+
+        dialog.exec_()
+
+
 
     def _on_delete_clicked(self):
         # delete currently selected document
