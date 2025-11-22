@@ -10,6 +10,7 @@ Modern Admin Page for Club Booking (PyQt5)
 """
 
 import json
+from tkinter import dialog
 from PyQt5 import QtWidgets, QtGui, QtCore
 from src.core.services import preview_text  # small helper (already in services.py)
 
@@ -444,7 +445,7 @@ class AdminPage(QtWidgets.QWidget):
                 continue
 
             # If inserting booking, show member and facility pickers
-            if coll == "bookings" and f in ("memberId", "facilityId"):
+            if (coll == "bookings" or coll == "usageLogs") and f in ("memberId", "facilityId"):
                 combo = QtWidgets.QComboBox()
                 combo.setEditable(False)
                 try:
@@ -466,7 +467,65 @@ class AdminPage(QtWidgets.QWidget):
                 form.addRow(QtWidgets.QLabel(f), combo)
                 continue
 
-            # fallback heuristics (unchanged)
+            # --- Special handling for bookings.payment: show 4 separate inputs ---
+            if coll == "bookings" and f == "payment":
+                payment_box = QtWidgets.QWidget()
+                pb_layout = QtWidgets.QFormLayout(payment_box)
+                # amount (number)
+                pay_amount = QtWidgets.QLineEdit()
+                pay_amount.setPlaceholderText("e.g. 120")
+                # method (string)
+                pay_method = QtWidgets.QLineEdit()
+                pay_method.setPlaceholderText("e.g. credit_card, cash")
+                # paidAt (datetime string)
+                pay_paidAt = QtWidgets.QLineEdit()
+                pay_paidAt.setPlaceholderText("e.g. 2025-01-15T16:59:00")
+                # status (string)
+                pay_status = QtWidgets.QLineEdit()
+                pay_status.setPlaceholderText("e.g. paid / pending")
+
+                pb_layout.addRow("amount", pay_amount)
+                pb_layout.addRow("method", pay_method)
+                pb_layout.addRow("paidAt", pay_paidAt)
+                pb_layout.addRow("status", pay_status)
+
+                # store the four widgets with special keys so on_ok can assemble payment object
+                widgets["payment__amount"] = pay_amount
+                widgets["payment__method"] = pay_method
+                widgets["payment__paidAt"] = pay_paidAt
+                widgets["payment__status"] = pay_status
+
+                form.addRow(QtWidgets.QLabel("payment"), payment_box)
+                continue
+
+
+            # --- existing special-case dropdowns for referenced fields (membershipLevelId, memberId, facilityId) ---
+            # (keep the dropdown logic you already have here)
+            if coll == "notifications" and f in ("memberId", "bookingId"):
+                combo = QtWidgets.QComboBox()
+                combo.setEditable(False)
+                try:
+                    target = "members" if f == "memberId" else "bookings"
+                    docs = list(self.db.find_docs(target, limit=1000))
+                    combo.addItem(f"-- choose {target} --", None)
+                    for doc_item in docs:
+                        # display friendly label if available
+                        if target == "members":
+                            label = f"{doc_item.get('firstName','') } {doc_item.get('lastName','') }".strip()
+                        else:
+                            label = str(doc_item.get('_id'))
+                        if not label:
+                            label = str(doc_item.get('_id'))
+                        combo.addItem(label, doc_item.get("_id"))
+                except Exception:
+                    combo.addItem("Error loading items", None)
+                widgets[f] = combo
+                form.addRow(QtWidgets.QLabel(f), combo)
+                continue
+
+
+            
+            # --- fallback heuristics (unchanged) ---
             if f in long_fields or (f.endswith("s") and f not in ("status", "type")):
                 w = QtWidgets.QPlainTextEdit()
                 w.setFixedHeight(70)
@@ -479,6 +538,7 @@ class AdminPage(QtWidgets.QWidget):
             widgets[f] = w
             form.addRow(QtWidgets.QLabel(f), w)
 
+            
 
         # Buttons
         btn_box = QtWidgets.QHBoxLayout()
@@ -529,49 +589,93 @@ class AdminPage(QtWidgets.QWidget):
             # create the document dictionary BEFORE filling it
             doc = {}
 
-            # build doc from widgets
+            # build doc from widgets (skip payment subfields for now)
             for k, w in widgets.items():
-
-                # --- ComboBox case (reference fields) ---
-                if isinstance(w, QtWidgets.QComboBox):
-                    data = w.currentData()
-                    doc[k] = data   # store referenced _id (or None)
+                if k.startswith("payment__"):
                     continue
 
-                # --- LineEdit case ---
+                # ComboBox case (references)
+                if isinstance(w, QtWidgets.QComboBox):
+                    data = w.currentData()
+                    doc[k] = data
+                    continue
+
+                # LineEdit
                 if isinstance(w, QtWidgets.QLineEdit):
                     raw = w.text()
-
-                # --- PlainTextEdit case ---
+                # PlainTextEdit
                 elif isinstance(w, QtWidgets.QPlainTextEdit):
                     raw = w.toPlainText()
-
-                # fallback
                 else:
                     try:
                         raw = w.text()
-                    except:
+                    except Exception:
                         raw = ""
 
-                # convert text to proper type
                 val = coerce_value(raw)
                 doc[k] = val
 
-            # insert into DB
+            # --- Assemble payment object from payment__* widgets if any exists ---
+            payment_obj = {}
+            has_payment_value = False
+
+            pa = widgets.get("payment__amount")
+            pm = widgets.get("payment__method")
+            pp = widgets.get("payment__paidAt")
+            ps = widgets.get("payment__status")
+
+            if pa is not None:
+                raw = pa.text().strip()
+                if raw != "":
+                    try:
+                        payment_obj["amount"] = int(raw) if raw.isdigit() else float(raw)
+                    except Exception:
+                        payment_obj["amount"] = coerce_value(raw)
+                    has_payment_value = True
+
+            if pm is not None:
+                raw = pm.text().strip()
+                if raw != "":
+                    payment_obj["method"] = raw
+                    has_payment_value = True
+
+            if pp is not None:
+                raw = pp.text().strip()
+                if raw != "":
+                    payment_obj["paidAt"] = raw
+                    has_payment_value = True
+
+            if ps is not None:
+                raw = ps.text().strip()
+                if raw != "":
+                    payment_obj["status"] = raw
+                    has_payment_value = True
+
+            if has_payment_value:
+                doc["payment"] = payment_obj
+
+            # defensive: ensure we don't attempt to insert an existing _id
+            if "_id" in doc:
+                doc.pop("_id", None)
+
+            # single insertion only (catch duplicate-key for helpful message)
+            from pymongo.errors import DuplicateKeyError
             try:
                 res = self.db.insert_doc(coll, doc)
                 QtWidgets.QMessageBox.information(dialog, "Inserted", f"Inserted id: {res.inserted_id}")
                 dialog.accept()
                 # reload UI
                 self._load_docs(coll)
+            except DuplicateKeyError as dk:
+                QtWidgets.QMessageBox.critical(dialog, "Insert failed", f"Duplicate key error: {dk}")
             except Exception as e:
                 QtWidgets.QMessageBox.critical(dialog, "Insert failed", str(e))
-
-
+            
         cancel_btn.clicked.connect(on_cancel)
         ok_btn.clicked.connect(on_ok)
 
         dialog.exec_()
+
 
 
 
