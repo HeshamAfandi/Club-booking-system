@@ -1,6 +1,8 @@
 # src/ui/login.py
 from PyQt5 import QtWidgets, QtCore
 import json
+from src.ui.admin_page import APP_STYLE
+from PyQt5 import QtGui
 
 # import existing pages
 from src.ui.admin_page import AdminPage
@@ -11,6 +13,12 @@ class LoginWindow(QtWidgets.QWidget):
         super().__init__()
         self.db = dbclient
         self._build_ui()
+        self.setStyleSheet(APP_STYLE)
+        # set global font similar to admin
+        base_font = QtGui.QFont()
+        base_font.setPointSize(13)
+        base_font.setFamily("Segoe UI")
+        self.setFont(base_font)
         self.setWindowTitle("Club Booking — Login")
         self.resize(420, 200)
 
