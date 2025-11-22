@@ -1,16 +1,13 @@
 # src/ui/admin_page.py
 """
 Modern Admin Page for Club Booking (PyQt5)
-- Replaces previous admin_page.py
 - Left: large collection buttons (6 collections)
-- Center: TableView with flattened columns (no JSON shown)
+- Center: TableView with flattened columns
 - Right: Details panel (key/value)
 - Theme: dark modern style
-- Updated: adjusted table font size and fixed last-row white/selection rendering
 """
 
 import json
-from tkinter import dialog
 from PyQt5 import QtWidgets, QtGui, QtCore
 from src.core.services import preview_text  # small helper (already in services.py)
 
@@ -182,12 +179,14 @@ class AdminPage(QtWidgets.QWidget):
         self.btn_refresh = QtWidgets.QPushButton("Refresh")
         self.btn_insert = QtWidgets.QPushButton("Insert")
         self.btn_delete = QtWidgets.QPushButton("Delete")
-        for w in (self.btn_search, self.btn_refresh, self.btn_insert, self.btn_delete):
+        self.btn_edit = QtWidgets.QPushButton("Edit")
+        for w in (self.btn_search, self.btn_refresh, self.btn_insert, self.btn_delete, self.btn_edit):
             w.setFixedHeight(34)
 
         topbar.addWidget(self.search_input, 1)
         topbar.addWidget(self.btn_search)
         topbar.addWidget(self.btn_refresh)
+        topbar.addWidget(self.btn_edit)
         topbar.addWidget(self.btn_insert)
         topbar.addWidget(self.btn_delete)
         center_layout.addLayout(topbar)
@@ -236,6 +235,7 @@ class AdminPage(QtWidgets.QWidget):
         self.btn_search.clicked.connect(self._on_search_clicked)
         self.btn_insert.clicked.connect(self._on_insert_clicked)
         self.btn_delete.clicked.connect(self._on_delete_clicked)
+        self.btn_edit.clicked.connect(self._on_edit_clicked)
 
     # ---------- UI handlers ----------
     def load_collections(self):
@@ -367,7 +367,6 @@ class AdminPage(QtWidgets.QWidget):
         self.count_label.setText(f"Filtered: {len(filtered)}")
 
     def _on_insert_clicked(self):
-        # New insert flow: show a form-based dialog built from existing docs,
         # fallback to JSON editor if no schema can be inferred.
         if not self.current_collection:
             QtWidgets.QMessageBox.warning(self, "No Collection", "Select a collection first.")
@@ -676,9 +675,6 @@ class AdminPage(QtWidgets.QWidget):
 
         dialog.exec_()
 
-
-
-
     def _on_delete_clicked(self):
         # delete currently selected document
         sel = self.table.selectedItems()
@@ -698,6 +694,235 @@ class AdminPage(QtWidgets.QWidget):
             self._load_docs(self.current_collection)
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Delete failed", str(e))
+
+    def _on_edit_clicked(self):
+        # Ensure a collection and a selected row exist
+        if not self.current_collection:
+            QtWidgets.QMessageBox.warning(self, "No Collection", "Select a collection first.")
+            return
+        sel = self.table.selectedItems()
+        if not sel:
+            QtWidgets.QMessageBox.warning(self, "No selection", "Select a row to edit.")
+            return
+
+        row = sel[0].row()
+        first_item = self.table.item(row, 0)
+        doc = first_item.data(QtCore.Qt.UserRole)
+        if not doc:
+            QtWidgets.QMessageBox.warning(self, "No document", "Couldn't load the selected document.")
+            return
+
+        # open the edit dialog
+        self._show_edit_dialog(self.current_collection, doc)
+
+    def _show_edit_dialog(self, coll, doc):
+        """
+        Show a form-based dialog to edit `doc` in collection `coll`.
+        Uses same field heuristics as insert; pre-fills values and performs update.
+        """
+        # infer fields from doc (skip _id)
+        fields = [k for k in doc.keys() if k != "_id"]
+
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowTitle(f"Edit document in {coll}")
+        dialog.setModal(True)
+        dialog.resize(520, 40 + len(fields) * 40)
+
+        form = QtWidgets.QFormLayout()
+        widgets = {}
+
+        long_fields = {"notes", "message", "maintenanceNote", "description"}
+
+        for f in fields:
+            # If this is payment (embedded), show sub-fields (if exists in doc)
+            if coll == "bookings" and f == "payment" and isinstance(doc.get("payment"), dict):
+                payment_box = QtWidgets.QWidget()
+                pb_layout = QtWidgets.QFormLayout(payment_box)
+                # create fields and prefill if available
+                pay_amount = QtWidgets.QLineEdit(str(doc.get("payment", {}).get("amount", "")))
+                pay_method = QtWidgets.QLineEdit(str(doc.get("payment", {}).get("method", "")))
+                pay_paidAt = QtWidgets.QLineEdit(str(doc.get("payment", {}).get("paidAt", "")))
+                pay_status = QtWidgets.QLineEdit(str(doc.get("payment", {}).get("status", "")))
+                pb_layout.addRow("amount", pay_amount)
+                pb_layout.addRow("method", pay_method)
+                pb_layout.addRow("paidAt", pay_paidAt)
+                pb_layout.addRow("status", pay_status)
+                widgets["payment__amount"] = pay_amount
+                widgets["payment__method"] = pay_method
+                widgets["payment__paidAt"] = pay_paidAt
+                widgets["payment__status"] = pay_status
+                form.addRow(QtWidgets.QLabel("payment"), payment_box)
+                continue
+
+            # referenced ids: use combo boxes if possible (memberships, members, facilities, bookings)
+            if coll == "members" and f == "membershipLevelId":
+                combo = QtWidgets.QComboBox()
+                combo.setEditable(False)
+                try:
+                    levels = list(self.db.find_docs("membershipLevels", limit=500))
+                    combo.addItem("-- choose membership level --", None)
+                    for lvl in levels:
+                        combo.addItem(str(lvl.get("name") or lvl.get("_id")), lvl.get("_id"))
+                    # set current value if present
+                    current = doc.get("membershipLevelId")
+                    if current is not None:
+                        idx = combo.findData(current)
+                        if idx >= 0:
+                            combo.setCurrentIndex(idx)
+                except Exception:
+                    combo.addItem("Error loading levels", None)
+                widgets[f] = combo
+                form.addRow(QtWidgets.QLabel(f), combo)
+                continue
+
+            if (coll == "bookings" or coll == "usageLogs") and f in ("memberId", "facilityId"):
+                combo = QtWidgets.QComboBox()
+                combo.setEditable(False)
+                try:
+                    target = "members" if f == "memberId" else "facilities"
+                    docs = list(self.db.find_docs(target, limit=1000))
+                    combo.addItem(f"-- choose {target} --", None)
+                    for doc_item in docs:
+                        if target == "members":
+                            label = f"{doc_item.get('firstName','')}  {doc_item.get('lastName','') }".strip()
+                        else:
+                            label = doc_item.get('name') or str(doc_item.get('_id'))
+                        combo.addItem(label, doc_item.get("_id"))
+                    # set current
+                    cur = doc.get(f)
+                    if cur is not None:
+                        idx = combo.findData(cur)
+                        if idx >= 0:
+                            combo.setCurrentIndex(idx)
+                except Exception:
+                    combo.addItem("Error loading items", None)
+                widgets[f] = combo
+                form.addRow(QtWidgets.QLabel(f), combo)
+                continue
+
+            # fallback: text input or multiline
+            if f in long_fields or (f.endswith("s") and f not in ("status", "type")):
+                w = QtWidgets.QPlainTextEdit()
+                w.setFixedHeight(70)
+                w.setPlainText(str(doc.get(f, "")))
+            elif any(sub in f.lower() for sub in ("date", "time", "at", "start", "end")):
+                w = QtWidgets.QLineEdit(str(doc.get(f, "")))
+                w.setPlaceholderText("ISO datetime (e.g. 2025-11-21T09:00:00)")
+            else:
+                w = QtWidgets.QLineEdit(str(doc.get(f, "")))
+            widgets[f] = w
+            form.addRow(QtWidgets.QLabel(f), w)
+
+        # buttons
+        btn_box = QtWidgets.QHBoxLayout()
+        btn_box.addStretch()
+        ok_btn = QtWidgets.QPushButton("Save")
+        cancel_btn = QtWidgets.QPushButton("Cancel")
+        btn_box.addWidget(cancel_btn)
+        btn_box.addWidget(ok_btn)
+
+        vbox = QtWidgets.QVBoxLayout(dialog)
+        vbox.addLayout(form)
+        vbox.addLayout(btn_box)
+
+        def on_cancel():
+            dialog.reject()
+
+        def coerce_value(s):
+            if s is None:
+                return None
+            s = s.strip()
+            if s == "":
+                return ""
+            if s.lower() in ("true", "false"):
+                return s.lower() == "true"
+            try:
+                if "." in s:
+                    return float(s)
+                return int(s)
+            except Exception:
+                pass
+            if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
+                try:
+                    return json.loads(s)
+                except Exception:
+                    pass
+            return s
+
+        def on_save():
+            # build update doc (only changed fields)
+            update = {}
+            for k, w in widgets.items():
+                # payment handled separately
+                if k.startswith("payment__"):
+                    continue
+                if isinstance(w, QtWidgets.QComboBox):
+                    update[k] = w.currentData()
+                    continue
+                if isinstance(w, QtWidgets.QLineEdit):
+                    raw = w.text()
+                elif isinstance(w, QtWidgets.QPlainTextEdit):
+                    raw = w.toPlainText()
+                else:
+                    try:
+                        raw = w.text()
+                    except Exception:
+                        raw = ""
+                update[k] = coerce_value(raw)
+
+            # assemble payment object if present
+            pa = widgets.get("payment__amount")
+            pm = widgets.get("payment__method")
+            pp = widgets.get("payment__paidAt")
+            ps = widgets.get("payment__status")
+            payment_obj = {}
+            has_payment = False
+            if pa is not None:
+                raw = pa.text().strip()
+                if raw != "":
+                    try:
+                        payment_obj["amount"] = int(raw) if raw.isdigit() else float(raw)
+                    except Exception:
+                        payment_obj["amount"] = coerce_value(raw)
+                    has_payment = True
+            if pm is not None:
+                raw = pm.text().strip()
+                if raw != "":
+                    payment_obj["method"] = raw
+                    has_payment = True
+            if pp is not None:
+                raw = pp.text().strip()
+                if raw != "":
+                    payment_obj["paidAt"] = raw
+                    has_payment = True
+            if ps is not None:
+                raw = ps.text().strip()
+                if raw != "":
+                    payment_obj["status"] = raw
+                    has_payment = True
+            if has_payment:
+                update["payment"] = payment_obj
+
+            # remove any keys that are unchanged (optional — here we send whole update)
+            # perform update by _id
+            try:
+                _id = doc.get("_id")
+                if _id is None:
+                    QtWidgets.QMessageBox.critical(dialog, "Update failed", "Document _id missing; cannot update.")
+                    return
+                # call db update
+                res = self.db.update_doc(coll, _id, update)
+                QtWidgets.QMessageBox.information(dialog, "Updated", f"Modified: {res.modified_count}")
+                dialog.accept()
+                self._load_docs(coll)
+            except Exception as e:
+                QtWidgets.QMessageBox.critical(dialog, "Update failed", str(e))
+
+        cancel_btn.clicked.connect(on_cancel)
+        ok_btn.clicked.connect(on_save)
+
+        dialog.exec_()
+
 
 # small util
 def _short_id(oid):
