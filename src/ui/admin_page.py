@@ -117,9 +117,10 @@ QHeaderView::section {
 
 # ---------- Main UI Widget ----------
 class AdminPage(QtWidgets.QWidget):
-    def __init__(self, dbclient):
+    def __init__(self, dbclient, logout_callback=None):
         super().__init__()
         self.db = dbclient
+        self.logout_callback = logout_callback
         self.current_collection = None
         self.docs_cache = []  # current page docs
         self._build_ui()
@@ -180,7 +181,9 @@ class AdminPage(QtWidgets.QWidget):
         self.btn_insert = QtWidgets.QPushButton("Insert")
         self.btn_delete = QtWidgets.QPushButton("Delete")
         self.btn_edit = QtWidgets.QPushButton("Edit")
-        for w in (self.btn_search, self.btn_refresh, self.btn_insert, self.btn_delete, self.btn_edit):
+        self.btn_logout = QtWidgets.QPushButton("Logout")
+        
+        for w in (self.btn_search, self.btn_refresh, self.btn_insert, self.btn_delete, self.btn_edit, self.btn_logout):
             w.setFixedHeight(34)
 
         topbar.addWidget(self.search_input, 1)
@@ -189,6 +192,7 @@ class AdminPage(QtWidgets.QWidget):
         topbar.addWidget(self.btn_edit)
         topbar.addWidget(self.btn_insert)
         topbar.addWidget(self.btn_delete)
+        topbar.addWidget(self.btn_logout)
         center_layout.addLayout(topbar)
 
         # Table
@@ -236,6 +240,7 @@ class AdminPage(QtWidgets.QWidget):
         self.btn_insert.clicked.connect(self._on_insert_clicked)
         self.btn_delete.clicked.connect(self._on_delete_clicked)
         self.btn_edit.clicked.connect(self._on_edit_clicked)
+        self.btn_logout.clicked.connect(self._on_logout_clicked)
 
     # ---------- UI handlers ----------
     def load_collections(self):
@@ -922,6 +927,21 @@ class AdminPage(QtWidgets.QWidget):
         ok_btn.clicked.connect(on_save)
 
         dialog.exec_()
+
+    def _on_logout_clicked(self):
+        """
+        Logout behavior: call provided logout_callback (which should show LoginWindow)
+        or as a fallback just close this window.
+        """
+        try:
+            if callable(getattr(self, "logout_callback", None)):
+                # call the callback which should create & show a LoginWindow
+                self.logout_callback()
+            else:
+                # fallback: just close
+                pass
+        finally:
+            self.close()
 
 
 # small util

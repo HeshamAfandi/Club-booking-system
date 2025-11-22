@@ -1,14 +1,13 @@
-# src/ui/main.py
+# main.py (project root)
 import sys
 from PyQt5 import QtWidgets
 from src.core.db_client import DBClient
-from src.ui.admin_page import AdminPage
-
+from src.ui.login import LoginWindow
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
-    db = DBClient()   # uses src/core/config.py
-    win = AdminPage(db)
+    db = DBClient()
+    win = LoginWindow(db)
     win.show()
     sys.exit(app.exec_())
 
