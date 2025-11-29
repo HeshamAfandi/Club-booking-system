@@ -3,6 +3,8 @@ from src.ui.admin_page import APP_STYLE
 from PyQt5 import QtGui
 from PyQt5 import QtWidgets, QtCore
 import json
+import datetime
+from bson import ObjectId
 
 class ClientPage(QtWidgets.QWidget):
     def __init__(self, dbclient, member, logout_callback=None):
@@ -24,41 +26,122 @@ class ClientPage(QtWidgets.QWidget):
         self._load_bookings()
 
     def _build_ui(self):
-        layout = QtWidgets.QVBoxLayout(self)
+        """
+        Builds the client UI with a left side menu and a stacked area:
+        - Bookings (default)
+        - Stats (client booking statistics)
+        - Usage (last 30 days)
+        - Spending (per facility)
+        """
+        # outer layout: horizontal (side menu + main stack)
+        outer = QtWidgets.QHBoxLayout(self)
+        outer.setContentsMargins(8, 8, 8, 8)
 
+        # ----------------- Side menu -----------------
+        self.side_menu = QtWidgets.QListWidget()
+        self.side_menu.setFixedWidth(180)
+        self.side_menu.addItem("My Bookings")
+        self.side_menu.addItem("Stats")
+        self.side_menu.addItem("Usage")
+        self.side_menu.addItem("Spending")
+        self.side_menu.setCurrentRow(0)  # default
+        outer.addWidget(self.side_menu)
+
+        # ----------------- Stacked area -----------------
+        self.stack = QtWidgets.QStackedWidget()
+        outer.addWidget(self.stack, 1)
+
+        # -------- page 0: bookings (reuse existing table + detail) --------
+        bookings_page = QtWidgets.QWidget()
+        bp_layout = QtWidgets.QVBoxLayout(bookings_page)
+
+        # header (welcome, refresh, new, cancel, logout)
         header = QtWidgets.QHBoxLayout()
         welcome = QtWidgets.QLabel(f"Welcome, {self.member.get('firstName','')}")
         welcome.setStyleSheet("font-size:16pt; font-weight:700;")
         header.addWidget(welcome)
         header.addStretch()
+
+        # keep/restore buttons used previously
         self.btn_refresh = QtWidgets.QPushButton("Refresh")
         self.btn_new_booking = QtWidgets.QPushButton("New Booking")
         self.btn_cancel_booking = QtWidgets.QPushButton("Cancel Booking")
         self.btn_logout = QtWidgets.QPushButton("Logout")
+        self.btn_check_in = QtWidgets.QPushButton("Check-In")
+        self.btn_check_out = QtWidgets.QPushButton("Check-Out")
         header.addWidget(self.btn_refresh)
         header.addWidget(self.btn_new_booking)
         header.addWidget(self.btn_cancel_booking)
         header.addWidget(self.btn_logout)
-        layout.addLayout(header)
+        header.addWidget(self.btn_check_in)
+        header.addWidget(self.btn_check_out)
+
+        bp_layout.addLayout(header)
 
         # bookings table
         self.table = QtWidgets.QTableWidget()
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-        layout.addWidget(self.table, 1)
+        bp_layout.addWidget(self.table, 1)
 
         # details area
         self.detail = QtWidgets.QPlainTextEdit()
         self.detail.setReadOnly(True)
         self.detail.setFixedHeight(160)
-        layout.addWidget(self.detail)
+        bp_layout.addWidget(self.detail)
 
-        # signals
+        self.stack.addWidget(bookings_page)
+
+        # -------- page 1: Stats --------
+        stats_page = QtWidgets.QWidget()
+        s_layout = QtWidgets.QVBoxLayout(stats_page)
+        stats_header = QtWidgets.QLabel("Your Booking Statistics")
+        stats_header.setStyleSheet("font-weight:700; font-size:14pt;")
+        s_layout.addWidget(stats_header)
+        # stat labels container
+        self.lbl_total_bookings = QtWidgets.QLabel("Total bookings: -")
+        self.lbl_status_counts = QtWidgets.QLabel("By status: -")
+        self.lbl_total_paid = QtWidgets.QLabel("Total paid: -")
+        self.lbl_top_facility = QtWidgets.QLabel("Most used facility: -")
+        for w in (self.lbl_total_bookings, self.lbl_status_counts, self.lbl_total_paid, self.lbl_top_facility):
+            w.setStyleSheet("font-size:11pt; padding:6px;")
+            s_layout.addWidget(w)
+        s_layout.addStretch()
+        self.stack.addWidget(stats_page)
+
+        # -------- page 2: Usage (table) --------
+        usage_page = QtWidgets.QWidget()
+        u_layout = QtWidgets.QVBoxLayout(usage_page)
+        u_header = QtWidgets.QLabel("Usage (last 30 days)")
+        u_header.setStyleSheet("font-weight:700; font-size:14pt;")
+        u_layout.addWidget(u_header)
+        self.usage_table = QtWidgets.QTableWidget()
+        u_layout.addWidget(self.usage_table, 1)
+        self.stack.addWidget(usage_page)
+
+        # -------- page 3: Spending per facility (table) --------
+        spending_page = QtWidgets.QWidget()
+        sp_layout = QtWidgets.QVBoxLayout(spending_page)
+        sp_header = QtWidgets.QLabel("Spending by Facility")
+        sp_header.setStyleSheet("font-weight:700; font-size:14pt;")
+        sp_layout.addWidget(sp_header)
+        self.spending_table = QtWidgets.QTableWidget()
+        sp_layout.addWidget(self.spending_table, 1)
+        self.stack.addWidget(spending_page)
+
+        # ----------------- Connect signals -----------------
+        self.side_menu.currentRowChanged.connect(self._on_side_selected)
         self.btn_refresh.clicked.connect(self._load_bookings)
-        self.table.itemSelectionChanged.connect(self._on_row_selected)
-        self.btn_logout.clicked.connect(self._on_logout_clicked)
         self.btn_new_booking.clicked.connect(self._on_new_booking_clicked)
         self.btn_cancel_booking.clicked.connect(self._on_cancel_booking)
+        self.btn_logout.clicked.connect(self._on_logout_clicked)
+        self.table.itemSelectionChanged.connect(self._on_row_selected)
+        self.btn_check_in.clicked.connect(self._on_check_in_clicked)
+        self.btn_check_out.clicked.connect(self._on_check_out_clicked)
+
+        # set default view to My Bookings
+        self.stack.setCurrentIndex(0)
+
 
     def _load_bookings(self):
         """
@@ -184,9 +267,11 @@ class ClientPage(QtWidgets.QWidget):
         finally:
             self.close()
 
+
     def _on_new_booking_clicked(self):
         """Open the Create Booking dialog for current member."""
         self._show_create_booking_dialog()
+
 
     def _show_create_booking_dialog(self):
         """
@@ -338,3 +423,289 @@ class ClientPage(QtWidgets.QWidget):
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Cancel failed", str(e))
 
+
+    def _on_side_selected(self, index):
+        """
+        When side menu selection changes, switch the stack page and trigger load actions.
+        0: My Bookings, 1: Stats, 2: Usage, 3: Spending
+        """
+        self.stack.setCurrentIndex(index)
+        if index == 0:
+            self._load_bookings()
+        elif index == 1:
+            self._load_client_stats()
+        elif index == 2:
+            self._load_usage_trends()
+        elif index == 3:
+            self._load_spending_by_facility()
+
+
+    def _load_client_stats(self):
+        """Populate the small stats labels using aggregations on bookings."""
+        member_id = self.member.get("_id")
+        if member_id is None:
+            return
+
+        # 1) Total bookings
+        try:
+            res = list(self.db.db["bookings"].aggregate([
+                {"$match": {"memberId": member_id}},
+                {"$count": "totalBookings"}
+            ]))
+            total = res[0]["totalBookings"] if res else 0
+        except Exception:
+            total = 0
+        self.lbl_total_bookings.setText(f"Total bookings: {total}")
+
+        # 2) Counts by status
+        try:
+            res = list(self.db.db["bookings"].aggregate([
+                {"$match": {"memberId": member_id}},
+                {"$group": {"_id": "$status", "count": {"$sum": 1}}}
+            ]))
+            pairs = [f"{r['_id']}: {r['count']}" for r in res]
+            status_text = ", ".join(pairs) if pairs else "None"
+        except Exception:
+            status_text = "Error"
+        self.lbl_status_counts.setText(f"By status: {status_text}")
+
+        # 3) Total paid
+        try:
+            res = list(self.db.db["bookings"].aggregate([
+                {"$match": {"memberId": member_id, "payment.amount": {"$exists": True}}},
+                {"$group": {"_id": None, "totalPaid": {"$sum": "$payment.amount"}}}
+            ]))
+            total_paid = res[0]["totalPaid"] if res else 0
+        except Exception:
+            total_paid = 0
+        self.lbl_total_paid.setText(f"Total paid: {total_paid}")
+
+        # 4) Most used facility (get facility name)
+        try:
+            res = list(self.db.db["bookings"].aggregate([
+                {"$match": {"memberId": member_id}},
+                {"$group": {"_id": "$facilityId", "count": {"$sum": 1}}},
+                {"$sort": {"count": -1}},
+                {"$limit": 1}
+            ]))
+            top_fid = res[0]["_id"] if res else None
+            if top_fid:
+                fac = self.db.db["facilities"].find_one({"_id": top_fid})
+                top_name = fac.get("name") if fac else str(top_fid)
+            else:
+                top_name = "—"
+        except Exception:
+            top_name = "Error"
+        self.lbl_top_facility.setText(f"Most used facility: {top_name}")
+
+
+    def _load_usage_trends(self):
+        """
+        Load usageLogs for last 30 days and fill usage_table with columns: day, totalMinutes
+        """
+        member_id = self.member.get("_id")
+        if member_id is None:
+            return
+
+        # compute 30 days ago
+        thirty_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=30)
+
+        try:
+            pipeline = [
+                {"$match": {"memberId": member_id, "checkIn": {"$gte": thirty_days_ago}}},
+                {"$project": {
+                    "day": {"$dateToString": {"format": "%Y-%m-%d", "date": "$checkIn"}},
+                    "minutes": {"$ifNull": ["$durationMinutes", 0]}
+                }},
+                {"$group": {"_id": "$day", "totalMinutes": {"$sum": "$minutes"}}},
+                {"$sort": {"_id": 1}}
+            ]
+            res = list(self.db.db["usageLogs"].aggregate(pipeline))
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Aggregation error", str(e))
+            res = []
+
+        # populate table
+        if not res:
+            self.usage_table.clear(); self.usage_table.setRowCount(0); self.usage_table.setColumnCount(0)
+            return
+
+        self.usage_table.setColumnCount(2)
+        self.usage_table.setRowCount(len(res))
+        self.usage_table.setHorizontalHeaderLabels(["day", "totalMinutes"])
+        for r, row in enumerate(res):
+            day_item = QtWidgets.QTableWidgetItem(str(row["_id"]))
+            mins_item = QtWidgets.QTableWidgetItem(str(row["totalMinutes"]))
+            self.usage_table.setItem(r, 0, day_item)
+            self.usage_table.setItem(r, 1, mins_item)
+        self.usage_table.resizeColumnsToContents()
+
+
+    def _load_spending_by_facility(self):
+        """
+        Aggregate total payment.amount per facility for this client and show in spending_table.
+        """
+        member_id = self.member.get("_id")
+        if member_id is None:
+            return
+
+        try:
+            pipeline = [
+                {"$match": {"memberId": member_id, "payment.amount": {"$exists": True}}},
+                {"$group": {"_id": "$facilityId", "totalSpent": {"$sum": "$payment.amount"}}},
+                {"$sort": {"totalSpent": -1}}
+            ]
+            res = list(self.db.db["bookings"].aggregate(pipeline))
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Aggregation error", str(e))
+            res = []
+
+        if not res:
+            self.spending_table.clear(); self.spending_table.setRowCount(0); self.spending_table.setColumnCount(0)
+            return
+
+        # map facility ids to names in batch
+        fac_ids = [r["_id"] for r in res if r["_id"] is not None]
+        fac_map = {}
+        if fac_ids:
+            try:
+                facs = list(self.db.db["facilities"].find({"_id": {"$in": fac_ids}}))
+                for f in facs:
+                    fac_map[f["_id"]] = f.get("name") or str(f["_id"])
+            except Exception:
+                fac_map = {}
+
+        self.spending_table.setColumnCount(2)
+        self.spending_table.setRowCount(len(res))
+        self.spending_table.setHorizontalHeaderLabels(["facility", "totalSpent"])
+        for r, row in enumerate(res):
+            fid = row["_id"]
+            name = fac_map.get(fid, str(fid))
+            self.spending_table.setItem(r, 0, QtWidgets.QTableWidgetItem(str(name)))
+            self.spending_table.setItem(r, 1, QtWidgets.QTableWidgetItem(str(row["totalSpent"])))
+        self.spending_table.resizeColumnsToContents()
+
+
+    def _on_check_in_clicked(self):
+        """
+        Create a new usageLogs entry for the selected booking (or ask user to pick a booking).
+        Fields: memberId, facilityId, checkIn (datetime), sessionStatus = 'in_progress'
+        """
+        sel = self.table.selectedItems()
+        if not sel:
+            QtWidgets.QMessageBox.warning(self, "No selection", "Select a booking (row) to check in.")
+            return
+        row = sel[0].row()
+        booking = self.table.item(row, 0).data(QtCore.Qt.UserRole)
+        if not booking:
+            QtWidgets.QMessageBox.warning(self, "No document", "Could not retrieve the booking.")
+            return
+
+        member_id = self.member.get("_id")
+        facility_id = booking.get("facilityId")
+        if facility_id is None:
+            QtWidgets.QMessageBox.warning(self, "Missing facility", "Selected booking has no facilityId.")
+            return
+
+        # confirm
+        ok = QtWidgets.QMessageBox.question(self, "Confirm check-in",
+                                            "Create a check-in record for this booking?",
+                                            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+        if ok != QtWidgets.QMessageBox.Yes:
+            return
+
+        now = datetime.datetime.utcnow()
+        usage_doc = {
+            "memberId": member_id,
+            "facilityId": facility_id,
+            "checkIn": now,
+            "sessionStatus": "in_progress",
+            # checkOut and durationMinutes will be added on checkout
+        }
+        try:
+            res = self.db.insert_doc("usageLogs", usage_doc)
+            QtWidgets.QMessageBox.information(self, "Checked in", f"Check-in recorded (id: {res.inserted_id}).")
+            # optionally refresh usage view or bookings list
+            # self._load_usage_trends()
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Insert failed", str(e))
+
+
+    def _on_check_out_clicked(self):
+        """
+        Complete the latest in_progress usageLog for the selected booking's facility and the current member:
+        - set checkOut (now)
+        - compute durationMinutes (rounded to minutes)
+        - set sessionStatus = 'completed'
+        """
+        sel = self.table.selectedItems()
+        if not sel:
+            QtWidgets.QMessageBox.warning(self, "No selection", "Select the booking row you want to check out from.")
+            return
+        row = sel[0].row()
+        booking = self.table.item(row, 0).data(QtCore.Qt.UserRole)
+        if not booking:
+            QtWidgets.QMessageBox.warning(self, "No document", "Could not retrieve the booking.")
+            return
+
+        member_id = self.member.get("_id")
+        facility_id = booking.get("facilityId")
+        if facility_id is None:
+            QtWidgets.QMessageBox.warning(self, "Missing facility", "Selected booking has no facilityId.")
+            return
+
+        # find the most recent in_progress usageLog for this member & facility
+        try:
+            query = {"memberId": member_id, "facilityId": facility_id, "sessionStatus": "in_progress"}
+            doc = self.db.db["usageLogs"].find_one(query, sort=[("checkIn", -1)])
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "DB error", str(e))
+            return
+
+        if not doc:
+            QtWidgets.QMessageBox.information(self, "No open session", "No in-progress check-in found for this facility.")
+            return
+
+        # confirm checkout
+        ok = QtWidgets.QMessageBox.question(self, "Confirm check-out",
+                                            "Complete the session and record check-out?",
+                                            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+        if ok != QtWidgets.QMessageBox.Yes:
+            return
+
+        now = datetime.datetime.utcnow()
+        checkin_time = doc.get("checkIn")
+        # compute duration in minutes (round to nearest int)
+        duration_minutes = None
+        try:
+            if isinstance(checkin_time, datetime.datetime):
+                delta = now - checkin_time
+                duration_minutes = int(round(delta.total_seconds() / 60.0))
+            else:
+                # if stored as string, try parsing ISO
+                try:
+                    parsed = datetime.datetime.fromisoformat(str(checkin_time))
+                    delta = now - parsed
+                    duration_minutes = int(round(delta.total_seconds() / 60.0))
+                except Exception:
+                    duration_minutes = None
+        except Exception:
+            duration_minutes = None
+
+        update = {
+            "checkOut": now,
+            "sessionStatus": "completed"
+        }
+        if duration_minutes is not None:
+            update["durationMinutes"] = duration_minutes
+
+        try:
+            # update the usageLogs doc by its _id
+            self.db.update_doc("usageLogs", doc["_id"], update)
+            QtWidgets.QMessageBox.information(self, "Checked out",
+                                            f"Session completed. Duration: {duration_minutes if duration_minutes is not None else 'N/A'} minutes.")
+            # Optionally refresh usage/booking views
+            # self._load_usage_trends()
+            # self._load_bookings()
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Update failed", str(e))
