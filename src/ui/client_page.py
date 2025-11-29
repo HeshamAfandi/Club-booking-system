@@ -69,12 +69,14 @@ class ClientPage(QtWidgets.QWidget):
         self.btn_logout = QtWidgets.QPushButton("Logout")
         self.btn_check_in = QtWidgets.QPushButton("Check-In")
         self.btn_check_out = QtWidgets.QPushButton("Check-Out")
+        self.btn_notifications = QtWidgets.QPushButton("Notifications") 
         header.addWidget(self.btn_refresh)
         header.addWidget(self.btn_new_booking)
         header.addWidget(self.btn_cancel_booking)
         header.addWidget(self.btn_logout)
         header.addWidget(self.btn_check_in)
         header.addWidget(self.btn_check_out)
+        header.addWidget(self.btn_notifications)
 
         bp_layout.addLayout(header)
 
@@ -138,6 +140,7 @@ class ClientPage(QtWidgets.QWidget):
         self.table.itemSelectionChanged.connect(self._on_row_selected)
         self.btn_check_in.clicked.connect(self._on_check_in_clicked)
         self.btn_check_out.clicked.connect(self._on_check_out_clicked)
+        self.btn_notifications.clicked.connect(self._on_show_notifications)
 
         # set default view to My Bookings
         self.stack.setCurrentIndex(0)
@@ -259,13 +262,28 @@ class ClientPage(QtWidgets.QWidget):
 
     def _on_logout_clicked(self):
         """
-        Call the logout callback if provided, otherwise just close the client page.
+        Create a logout notification and call the logout callback (or just close).
         """
         try:
+            # create logout notification
+            try:
+                notif = {
+                    "memberId": self.member.get("_id"),
+                    "type": "logout",
+                    "title": "Logged out",
+                    "message": f"You logged out at {datetime.datetime.utcnow().isoformat()}",
+                    "sentAt": datetime.datetime.utcnow(),
+                    "status": "sent"
+                }
+                self.db.insert_doc("notifications", notif)
+            except Exception:
+                pass
+
             if callable(getattr(self, "logout_callback", None)):
                 self.logout_callback()
         finally:
             self.close()
+
 
 
     def _on_new_booking_clicked(self):
@@ -379,7 +397,21 @@ class ClientPage(QtWidgets.QWidget):
                 doc["payment"] = payment_obj
 
             try:
-                self.db.insert_doc("bookings", doc)
+                res=self.db.insert_doc("bookings", doc)
+                try:
+                    notif = {
+                        "memberId": self.member.get("_id"),
+                        "bookingId": res.inserted_id,
+                        "type": "booking_created",
+                        "title": "Booking Created",
+                        "message": f"Your booking on {doc.get('startTime')} has been created (status: {doc.get('status')}).",
+                        "sentAt": datetime.datetime.utcnow(),
+                        "status": "sent"
+                    }
+                    self.db.insert_doc("notifications", notif)
+                except Exception:
+                    # non-critical; ignore notification errors
+                    pass
                 QtWidgets.QMessageBox.information(dialog, "Created", "Booking created successfully.")
                 dialog.accept()
                 self._load_bookings()
@@ -418,6 +450,21 @@ class ClientPage(QtWidgets.QWidget):
                 return
             # perform a soft-cancel (set status)
             res = self.db.update_doc("bookings", _id, {"status": "cancelled"})
+            # create notification for the member
+            try:
+                notif = {
+                    "memberId": self.member.get("_id"),
+                    "bookingId": _id,
+                    "type": "booking_cancelled",
+                    "title": "Booking Cancelled",
+                    "message": f"Your booking (id: {_id}) was cancelled.",
+                    "sentAt": datetime.datetime.utcnow(),
+                    "status": "sent"
+                }
+                self.db.insert_doc("notifications", notif)
+            except Exception:
+                pass
+
             QtWidgets.QMessageBox.information(self, "Cancelled", f"Modified: {getattr(res,'modified_count', '?')}")
             self._load_bookings()
         except Exception as e:
@@ -624,6 +671,20 @@ class ClientPage(QtWidgets.QWidget):
         }
         try:
             res = self.db.insert_doc("usageLogs", usage_doc)
+            # notification
+            try:
+                notif = {
+                    "memberId": self.member.get("_id"),
+                    "bookingId": booking.get("_id"),
+                    "type": "checked_in",
+                    "title": "Checked In",
+                    "message": f"Checked in to {booking.get('startTime')} / facility {booking.get('facilityId')}.",
+                    "sentAt": datetime.datetime.utcnow(),
+                    "status": "sent"
+                }
+                self.db.insert_doc("notifications", notif)
+            except Exception:
+                pass
             QtWidgets.QMessageBox.information(self, "Checked in", f"Check-in recorded (id: {res.inserted_id}).")
             # optionally refresh usage view or bookings list
             # self._load_usage_trends()
@@ -702,6 +763,20 @@ class ClientPage(QtWidgets.QWidget):
         try:
             # update the usageLogs doc by its _id
             self.db.update_doc("usageLogs", doc["_id"], update)
+            # notification
+            try:
+                notif = {
+                    "memberId": self.member.get("_id"),
+                    "bookingId": booking.get("_id"),
+                    "type": "checked_out",
+                    "title": "Checked Out",
+                    "message": f"Checked out. Duration: {duration_minutes if duration_minutes is not None else 'N/A'} minutes.",
+                    "sentAt": datetime.datetime.utcnow(),
+                    "status": "sent"
+                }
+                self.db.insert_doc("notifications", notif)
+            except Exception:
+                pass
             QtWidgets.QMessageBox.information(self, "Checked out",
                                             f"Session completed. Duration: {duration_minutes if duration_minutes is not None else 'N/A'} minutes.")
             # Optionally refresh usage/booking views
@@ -709,3 +784,88 @@ class ClientPage(QtWidgets.QWidget):
             # self._load_bookings()
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Update failed", str(e))
+
+
+    def _on_show_notifications(self):
+        """
+        Show a dialog listing notifications for the current member.
+        Allows marking selected notifications as 'read'.
+        """
+        member_id = self.member.get("_id")
+        if member_id is None:
+            return
+
+        # fetch notifications sorted newest first
+        try:
+            docs = list(self.db.db["notifications"].find({"memberId": member_id}).sort("sentAt", -1).limit(200))
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "DB Error", f"Failed to load notifications: {e}")
+            return
+
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle("Notifications")
+        dlg.resize(560, 420)
+        v = QtWidgets.QVBoxLayout(dlg)
+
+        listw = QtWidgets.QListWidget()
+        for n in docs:
+            sent = n.get("sentAt")
+            ts = str(sent) if sent is not None else ""
+            title = n.get("title", n.get("type", "notification"))
+            msg = n.get("message", "")
+            status = n.get("status", "sent")
+            display = f"[{status}] {ts} — {title}: {msg}"
+            item = QtWidgets.QListWidgetItem(display)
+            item.setData(QtCore.Qt.UserRole, n)  # store full doc
+            listw.addItem(item)
+
+        v.addWidget(listw)
+
+        # buttons: mark read, close
+        h = QtWidgets.QHBoxLayout()
+        btn_mark = QtWidgets.QPushButton("Mark selected as read")
+        btn_close = QtWidgets.QPushButton("Close")
+        h.addStretch()
+        h.addWidget(btn_mark)
+        h.addWidget(btn_close)
+        v.addLayout(h)
+
+        def on_close():
+            dlg.accept()
+
+        def on_mark_read():
+            sel = listw.selectedItems()
+            if not sel:
+                QtWidgets.QMessageBox.information(dlg, "No selection", "Select notifications to mark as read.")
+                return
+            ids = []
+            for it in sel:
+                n = it.data(QtCore.Qt.UserRole)
+                if n and n.get("_id"):
+                    ids.append(n["_id"])
+            # update each to status = "read"
+            try:
+                for _id in ids:
+                    self.db.update_doc("notifications", _id, {"status": "read"})
+                QtWidgets.QMessageBox.information(dlg, "Updated", f"Marked {len(ids)} notifications as read.")
+                # refresh list in dialog
+                new_docs = list(self.db.db["notifications"].find({"memberId": member_id}).sort("sentAt", -1).limit(200))
+                listw.clear()
+                for n in new_docs:
+                    sent = n.get("sentAt"); ts = str(sent) if sent is not None else ""
+                    title = n.get("title", n.get("type", "notification"))
+                    msg = n.get("message", "")
+                    status = n.get("status", "sent")
+                    display = f"[{status}] {ts} — {title}: {msg}"
+                    item = QtWidgets.QListWidgetItem(display)
+                    item.setData(QtCore.Qt.UserRole, n)
+                    listw.addItem(item)
+            except Exception as e:
+                QtWidgets.QMessageBox.critical(dlg, "Update failed", str(e))
+
+        btn_close.clicked.connect(on_close)
+        btn_mark.clicked.connect(on_mark_read)
+
+        dlg.exec_()
+
+

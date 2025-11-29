@@ -1,4 +1,5 @@
 # src/ui/login.py
+from datetime import datetime
 from PyQt5 import QtWidgets, QtCore
 import json
 from src.ui.admin_page import APP_STYLE
@@ -78,6 +79,19 @@ class LoginWindow(QtWidgets.QWidget):
             return
 
         # open client page (member)
+        # create login notification for this member
+        try:
+            notif = {
+                "memberId": member.get("_id"),
+                "type": "login",
+                "title": "Logged in",
+                "message": f"You logged in at {datetime.utcnow().isoformat()}",
+                "sentAt": datetime.utcnow(),
+                "status": "sent"
+            }
+            self.db.insert_doc("notifications", notif)
+        except Exception:
+            pass
         self.client_win = ClientPage(self.db, member, logout_callback=self._open_new_login)
         self.client_win.show()
         self.close()
