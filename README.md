@@ -1,7 +1,7 @@
 # Club-booking-system
 
 A desktop application for managing bookings, facilities, usage logs, and notifications for a sports club.  
-Built using Python (PyQt5) and MongoDB for the Advanced Database Course (Phase 2).
+Built using Python (PyQt5) and MongoDB.
 
 ---
 
@@ -27,22 +27,6 @@ This system provides two separate interfaces:
 - Usage trends for the last 30 days
 - Spending per facility
 - Side menu navigation between pages
-
----
-
-## Project Structure
-
-src/
-│── core/
-│ └── db_client.py
-│
-│── ui/
-│ ├── login.py
-│ ├── admin_page.py
-│ └── client_page.py
-│
-└── main.py
-
 
 ---
 
