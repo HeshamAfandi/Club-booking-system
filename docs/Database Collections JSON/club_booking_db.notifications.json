@@ -1,0 +1,132 @@
+[{
+  "_id": {
+    "$oid": "69207a54dc2b31438b57e0fe"
+  },
+  "memberId": "67890abcde1234567890abcd",
+  "bookingId": "7abc90def01234567890abcd",
+  "type": "booking_confirmation",
+  "title": "Your Booking is Confirmed",
+  "message": "Your reservation for Tennis Court 1 on Jan 15 at 5 PM has been confirmed.",
+  "sentAt": "2025-01-14T13:42:00",
+  "status": "sent"
+},
+{
+  "_id": {
+    "$oid": "692b733e6082995ec037ad8a"
+  },
+  "memberId": {
+    "$oid": "691f4f4557dc9a85d45a7997"
+  },
+  "type": "login",
+  "title": "Logged in",
+  "message": "You logged in at 2025-11-29T22:27:10.160238",
+  "sentAt": {
+    "$date": "2025-11-29T22:27:10.160Z"
+  },
+  "status": "read"
+},
+{
+  "_id": {
+    "$oid": "692b735b6082995ec037ad8c"
+  },
+  "memberId": {
+    "$oid": "691f4f4557dc9a85d45a7997"
+  },
+  "bookingId": {
+    "$oid": "692b3435df8ba239ee01ed13"
+  },
+  "type": "checked_in",
+  "title": "Checked In",
+  "message": "Checked in to 20 / facility 691f4f4557dc9a85d45a7995.",
+  "sentAt": {
+    "$date": "2025-11-29T22:27:39.228Z"
+  },
+  "status": "read"
+},
+{
+  "_id": {
+    "$oid": "692b73636082995ec037ad8e"
+  },
+  "memberId": {
+    "$oid": "691f4f4557dc9a85d45a7997"
+  },
+  "bookingId": {
+    "$oid": "692b33987ca7919a14beb9ac"
+  },
+  "type": "checked_in",
+  "title": "Checked In",
+  "message": "Checked in to 22 / facility 691f4f4557dc9a85d45a7996.",
+  "sentAt": {
+    "$date": "2025-11-29T22:27:47.040Z"
+  },
+  "status": "read"
+},
+{
+  "_id": {
+    "$oid": "692b73ae6082995ec037ad8f"
+  },
+  "memberId": {
+    "$oid": "691f4f4557dc9a85d45a7997"
+  },
+  "bookingId": {
+    "$oid": "692b33987ca7919a14beb9ac"
+  },
+  "type": "checked_out",
+  "title": "Checked Out",
+  "message": "Checked out. Duration: 1 minutes.",
+  "sentAt": {
+    "$date": "2025-11-29T22:29:02.190Z"
+  },
+  "status": "read"
+},
+{
+  "_id": {
+    "$oid": "692b73b26082995ec037ad90"
+  },
+  "memberId": {
+    "$oid": "691f4f4557dc9a85d45a7997"
+  },
+  "bookingId": {
+    "$oid": "692b3435df8ba239ee01ed13"
+  },
+  "type": "checked_out",
+  "title": "Checked Out",
+  "message": "Checked out. Duration: 1 minutes.",
+  "sentAt": {
+    "$date": "2025-11-29T22:29:06.739Z"
+  },
+  "status": "read"
+},
+{
+  "_id": {
+    "$oid": "692b73e5fda4c6e2271c4aa0"
+  },
+  "memberId": {
+    "$oid": "691f4f4557dc9a85d45a7997"
+  },
+  "type": "login",
+  "title": "Logged in",
+  "message": "You logged in at 2025-11-29T22:29:57.782992",
+  "sentAt": {
+    "$date": "2025-11-29T22:29:57.782Z"
+  },
+  "status": "read"
+},
+{
+  "_id": {
+    "$oid": "692b7426fda4c6e2271c4aa2"
+  },
+  "memberId": {
+    "$oid": "691f4f4557dc9a85d45a7997"
+  },
+  "bookingId": {
+    "$oid": "692b7426fda4c6e2271c4aa1"
+  },
+  "type": "booking_created",
+  "title": "Booking Created",
+  "message": "Your booking on 22:00 has been created (status: pending).",
+  "sentAt": {
+    "$date": "2025-11-29T22:31:02.826Z"
+  },
+  "status": "read"
+}]

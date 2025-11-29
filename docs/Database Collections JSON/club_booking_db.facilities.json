@@ -1,0 +1,48 @@
+[{
+  "_id": {
+    "$oid": "691f4f4557dc9a85d45a7995"
+  },
+  "name": "Gym A",
+  "type": "gym",
+  "status": "available",
+  "maintenanceNote": "",
+  "bookedSlots": [],
+  "assignedStaff": [
+    {
+      "name": "Ahmed",
+      "role": "manager",
+      "contact": "010..."
+    }
+  ],
+  "openingHours": [
+    {
+      "day": "Mon",
+      "open": "06:00",
+      "close": "22:00"
+    }
+  ]
+},
+{
+  "_id": {
+    "$oid": "691f4f4557dc9a85d45a7996"
+  },
+  "name": "Pool 1",
+  "type": "pool",
+  "status": "maintenance",
+  "maintenanceNote": "Cleaning",
+  "bookedSlots": [],
+  "assignedStaff": [
+    {
+      "name": "Mona",
+      "role": "lifeguard",
+      "contact": "011..."
+    }
+  ],
+  "openingHours": [
+    {
+      "day": "Tue",
+      "open": "08:00",
+      "close": "20:00"
+    }
+  ]
+}]

@@ -1,0 +1,26 @@
+[{
+  "_id": {
+    "$oid": "691f4f4557dc9a85d45a7993"
+  },
+  "name": "Basic",
+  "maxBookingsPerDay": 1,
+  "advanceBookingWindowDays": 7,
+  "accessibleFacilityTypes": [
+    "gym"
+  ],
+  "price": 100
+},
+{
+  "_id": {
+    "$oid": "691f4f4557dc9a85d45a7994"
+  },
+  "name": "Premium",
+  "maxBookingsPerDay": 3,
+  "advanceBookingWindowDays": 30,
+  "accessibleFacilityTypes": [
+    "gym",
+    "pool",
+    "court"
+  ],
+  "price": 300
+}]

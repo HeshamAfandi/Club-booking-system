@@ -1,0 +1,140 @@
+[{
+  "_id": {
+    "$oid": "69207a1ddc2b31438b57e0fd"
+  },
+  "memberId": "67890abcde1234567890abcd",
+  "facilityId": "645fe21bcf90123456789abc",
+  "checkIn": "2025-01-15T17:05:00",
+  "checkOut": "2025-01-15T17:55:00",
+  "durationMinutes": 50,
+  "sessionStatus": "completed"
+},
+{
+  "_id": {
+    "$oid": "69207c35522fd12b100ed76a"
+  },
+  "memberId": {
+    "$oid": "691f4f4557dc9a85d45a7997"
+  },
+  "facilityId": {
+    "$oid": "691f4f4557dc9a85d45a7995"
+  },
+  "checkIn": "9:00",
+  "checkOut": "11:00",
+  "durationMinutes": 120,
+  "sessionStatus": "done"
+},
+{
+  "_id": {
+    "$oid": "692b6b3616b89f7bfef36d0c"
+  },
+  "memberId": {
+    "$oid": "691f4f4557dc9a85d45a7997"
+  },
+  "facilityId": {
+    "$oid": "691f4f4557dc9a85d45a7995"
+  },
+  "checkIn": {
+    "$date": "2025-11-29T21:52:54.426Z"
+  },
+  "sessionStatus": "completed",
+  "checkOut": {
+    "$date": "2025-11-29T21:53:34.929Z"
+  },
+  "durationMinutes": 1
+},
+{
+  "_id": {
+    "$oid": "692b6b4d16b89f7bfef36d0d"
+  },
+  "memberId": {
+    "$oid": "691f4f4557dc9a85d45a7997"
+  },
+  "facilityId": {
+    "$oid": "691f4f4557dc9a85d45a7996"
+  },
+  "checkIn": {
+    "$date": "2025-11-29T21:53:17.229Z"
+  },
+  "sessionStatus": "completed",
+  "checkOut": {
+    "$date": "2025-11-29T21:57:05.368Z"
+  },
+  "durationMinutes": 4
+},
+{
+  "_id": {
+    "$oid": "692b6b6716b89f7bfef36d0e"
+  },
+  "memberId": {
+    "$oid": "691f4f4557dc9a85d45a7997"
+  },
+  "facilityId": {
+    "$oid": "691f4f4557dc9a85d45a7996"
+  },
+  "checkIn": {
+    "$date": "2025-11-29T21:53:43.820Z"
+  },
+  "sessionStatus": "completed",
+  "checkOut": {
+    "$date": "2025-11-29T21:53:56.225Z"
+  },
+  "durationMinutes": 0
+},
+{
+  "_id": {
+    "$oid": "692b6c08c5fe2407c070ffe7"
+  },
+  "memberId": {
+    "$oid": "691f4f4557dc9a85d45a7997"
+  },
+  "facilityId": {
+    "$oid": "691f4f4557dc9a85d45a7995"
+  },
+  "checkIn": {
+    "$date": "2025-11-29T21:56:24.516Z"
+  },
+  "sessionStatus": "completed",
+  "checkOut": {
+    "$date": "2025-11-29T21:56:33.131Z"
+  },
+  "durationMinutes": 0
+},
+{
+  "_id": {
+    "$oid": "692b735b6082995ec037ad8b"
+  },
+  "memberId": {
+    "$oid": "691f4f4557dc9a85d45a7997"
+  },
+  "facilityId": {
+    "$oid": "691f4f4557dc9a85d45a7995"
+  },
+  "checkIn": {
+    "$date": "2025-11-29T22:27:39.227Z"
+  },
+  "sessionStatus": "completed",
+  "checkOut": {
+    "$date": "2025-11-29T22:29:06.738Z"
+  },
+  "durationMinutes": 1
+},
+{
+  "_id": {
+    "$oid": "692b73636082995ec037ad8d"
+  },
+  "memberId": {
+    "$oid": "691f4f4557dc9a85d45a7997"
+  },
+  "facilityId": {
+    "$oid": "691f4f4557dc9a85d45a7996"
+  },
+  "checkIn": {
+    "$date": "2025-11-29T22:27:47.039Z"
+  },
+  "sessionStatus": "completed",
+  "checkOut": {
+    "$date": "2025-11-29T22:29:02.188Z"
+  },
+  "durationMinutes": 1
+}]
